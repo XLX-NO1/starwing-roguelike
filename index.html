@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>星翼突围</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="gameCanvas" aria-label="星翼突围游戏画布"></canvas>
+
+      <section id="menuScreen" class="screen is-visible">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <p class="eyebrow">ROGUE FLIGHT</p>
+          <h1>星翼突围</h1>
+        </div>
+        <div class="difficulty-panel" role="group" aria-label="难度选择">
+          <span class="difficulty-label">难度</span>
+          <div class="difficulty-options">
+            <button class="difficulty-button" type="button" data-difficulty="easy">
+              <strong>简单</strong>
+              <span>升级 3 选</span>
+            </button>
+            <button class="difficulty-button is-active" type="button" data-difficulty="normal">
+              <strong>中等</strong>
+              <span>升级 2 选</span>
+            </button>
+            <button class="difficulty-button" type="button" data-difficulty="hard">
+              <strong>困难</strong>
+              <span>升级 1 选</span>
+            </button>
+          </div>
+        </div>
+        <div class="active-skill-panel" role="group" aria-label="主动技能配置">
+          <div class="active-skill-head">
+            <span>主动技能</span>
+            <strong id="activeSkillSummary">Q / E / R</strong>
+          </div>
+          <div id="activeSkillSlots" class="active-config-slots"></div>
+          <div id="activeSkillOptions" class="active-skill-options"></div>
+        </div>
+        <div class="menu-actions">
+          <button id="startButton" class="primary-button">开始出击</button>
+        </div>
+        <p class="version">Prototype 0.1</p>
+      </section>
+
+      <section id="pauseScreen" class="screen dialog-screen" aria-live="polite">
+        <div class="dialog">
+          <h2>暂停</h2>
+          <button id="resumeButton" class="primary-button">继续</button>
+          <button id="restartFromPauseButton" class="secondary-button">重新开始</button>
+          <button id="menuFromPauseButton" class="secondary-button">返回菜单</button>
+        </div>
+      </section>
+
+      <section id="upgradeScreen" class="screen upgrade-screen" aria-live="polite">
+        <div class="upgrade-wrap">
+          <div class="upgrade-heading">
+            <p class="eyebrow">LEVEL UP</p>
+            <h2 id="upgradeTitle">选择强化</h2>
+            <p id="upgradePrompt" class="upgrade-prompt">中等难度本次升级可选择 2 个技能</p>
+          </div>
+          <div id="upgradeCards" class="upgrade-cards"></div>
+        </div>
+      </section>
+
+      <section id="resultScreen" class="screen result-screen" aria-live="polite">
+        <div class="dialog result-dialog">
+          <p id="resultKicker" class="eyebrow">SORTIE COMPLETE</p>
+          <h2 id="resultTitle">结算</h2>
+          <dl class="result-stats">
+            <div>
+              <dt>存活</dt>
+              <dd id="resultTime">00:00</dd>
+            </div>
+            <div>
+              <dt>等级</dt>
+              <dd id="resultLevel">1</dd>
+            </div>
+            <div>
+              <dt>击坠</dt>
+              <dd id="resultKills">0</dd>
+            </div>
+            <div>
+              <dt>得分</dt>
+              <dd id="resultScore">0</dd>
+            </div>
+          </dl>
+          <button id="retryButton" class="primary-button">再次出击</button>
+          <button id="menuButton" class="secondary-button">返回菜单</button>
+        </div>
+      </section>
+
+      <section id="hud" class="hud" aria-live="polite">
+        <div class="top-left">
+          <div class="status-block">
+            <div class="status-row">
+              <span>机体</span>
+              <strong id="hpText">100 / 100</strong>
+            </div>
+            <div class="bar">
+              <span id="hpBar"></span>
+            </div>
+            <div class="status-row shield-row">
+              <span>护盾</span>
+              <strong id="shieldText">0</strong>
+            </div>
+            <div class="bar shield-bar">
+              <span id="shieldBar"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="top-center">
+          <div class="timer" id="timerText">00:00</div>
+          <div class="stage-panel" id="stagePanel">
+            <span id="stageText">关卡 1 / 10</span>
+            <strong id="stageName">近地轨道</strong>
+            <em id="stageTrait">补给航道</em>
+            <small id="stageObjective">波次 1 / 12 | 本波 0 / 7</small>
+          </div>
+          <div id="bossPanel" class="boss-panel">
+            <div class="boss-name" id="bossName">深空母舰</div>
+            <div class="bar boss-bar">
+              <span id="bossBar"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="top-right">
+          <button id="pauseButton" class="icon-button" aria-label="暂停">Ⅱ</button>
+        </div>
+
+        <div class="bottom-left">
+          <div class="xp-block">
+            <div class="status-row">
+              <span id="levelText">Lv. 1</span>
+              <strong id="xpText">0 / 45</strong>
+            </div>
+            <div class="bar xp-bar">
+              <span id="xpBar"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bottom-center">
+          <div id="activeSkillHud" class="active-skill-hud"></div>
+        </div>
+
+        <div class="bottom-right">
+          <div id="weaponList" class="weapon-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="./src/data.js"></script>
+    <script src="./src/content.js"></script>
+    <script src="./src/main.js"></script>
+  </body>
+</html>
