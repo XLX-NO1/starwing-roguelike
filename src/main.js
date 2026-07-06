@@ -305,6 +305,14 @@
     return state.stageIndex >= stages.length - 1;
   }
 
+  function isVictoryPhase() {
+    return state?.stagePhase === "victory";
+  }
+
+  function isCombatPhase() {
+    return state?.stagePhase === "fight" || state?.stagePhase === "boss";
+  }
+
   function isBossEnemy(enemy) {
     return enemy?.bossKind === "stage" || enemy?.bossKind === "final" || enemy?.behavior === "boss";
   }
@@ -327,24 +335,38 @@
     return state.waveIndex >= stage.waves && !state.waveActive && state.waveBreakTimer <= 0 && aliveNonBossCount() === 0;
   }
 
+  function waveProgressText() {
+    const target = Math.max(1, state.waveTarget || 0);
+    const defeated = Math.min(state.waveKills, target);
+    const remaining = Math.max(0, state.waveSpawnRemaining || 0) + aliveNonBossCount();
+    return `本波 ${defeated} / ${target} | 剩余 ${remaining}`;
+  }
+
+  function addWaveExtraEnemy(count = 1) {
+    if (state?.stagePhase === "fight" && state.waveActive) {
+      state.waveTarget += count;
+    }
+  }
+
   function stageObjectiveText() {
     if (!state) return "波次 1 / 12 | 本波 0 / 7";
     const stage = currentStage();
+    if (isVictoryPhase()) return "突围成功";
     if (state.stagePhase === "clear") return "关卡完成";
     if (state.stagePhase === "boss") {
       return isFinalStage() ? "摧毁最终 Boss" : `击败小Boss：${stage.miniBossName}`;
     }
     if (state.bountyActive) {
-      return `悬赏目标出现 | 擦弹 ${state.grazeStreak}`;
+      return `悬赏目标出现 | ${waveProgressText()} | 擦弹 ${state.grazeStreak}`;
     }
     if (state.bountyPending && state.waveActive) {
-      return `悬赏信号 ${Math.ceil(state.bountyTimer)}s | 本波 ${Math.min(state.waveKills, state.waveTarget)} / ${state.waveTarget}`;
+      return `悬赏信号 ${Math.ceil(state.bountyTimer)}s | ${waveProgressText()}`;
     }
     if (!state.waveActive) {
       if (state.waveIndex >= stage.waves) return `波次 ${stage.waves} / ${stage.waves} | Boss 准备`;
       return `波次 ${state.waveIndex} / ${stage.waves} | 下一波准备`;
     }
-    return `波次 ${state.waveIndex + 1} / ${stage.waves} | 本波 ${Math.min(state.waveKills, state.waveTarget)} / ${state.waveTarget}`;
+    return `波次 ${state.waveIndex + 1} / ${stage.waves} | ${waveProgressText()}`;
   }
 
   const upgradeAccent = CONTENT.upgradeAccent;
@@ -572,33 +594,69 @@
 
     state.time += dt;
     updateStage(dt);
+
+    if (isVictoryPhase()) {
+      updateCamera(dt);
+      updateEffects(dt);
+      cleanup();
+      updateVictoryTimer(dt);
+      updateHud();
+      return;
+    }
+
     updateCombatFlow(dt);
     updateEnvironment(dt);
+    if (isVictoryPhase()) {
+      updateCamera(dt);
+      updateEffects(dt);
+      cleanup();
+      updateVictoryTimer(dt);
+      updateHud();
+      return;
+    }
     updateSpawn(dt);
     updatePlayer(dt);
     updateCamera(dt);
     updateWeapons(dt);
+    if (isVictoryPhase()) {
+      updateEffects(dt);
+      cleanup();
+      updateVictoryTimer(dt);
+      updateHud();
+      return;
+    }
     updateSpecialSystems(dt);
+    if (isVictoryPhase()) {
+      updateEffects(dt);
+      cleanup();
+      updateVictoryTimer(dt);
+      updateHud();
+      return;
+    }
     updateEnemies(dt);
     updateProjectiles(dt);
     updatePickups(dt);
     updateEffects(dt);
     handleCollisions();
-    updateExplosionQueue();
+    if (isCombatPhase()) updateExplosionQueue();
     cleanup();
 
-    if (state.victoryTimer > 0) {
-      state.victoryTimer -= dt;
-      if (state.victoryTimer <= 0) endGame(true);
-    }
+    updateVictoryTimer(dt);
 
-    if (player.hp <= 0 && player.alive) {
+    if (!isVictoryPhase() && player.hp <= 0 && player.alive) {
       player.alive = false;
       burst(player.x, player.y, "#ff6b6b", 42, 6);
       endGame(false);
     }
 
     updateHud();
+  }
+
+  function updateVictoryTimer(dt) {
+    if (state.victoryTimer > 0) {
+      state.victoryTimer -= dt;
+      if (state.victoryTimer <= 0) endGame(true);
+    }
   }
 
   function updatePlayer(dt) {
@@ -680,7 +738,7 @@
   }
 
   function triggerDash() {
-    if (!player || mode !== "playing" || player.dashCooldown > 0 || !player.alive) return;
+    if (!player || mode !== "playing" || !isCombatPhase() || player.dashCooldown > 0 || !player.alive) return;
     let dx = 0;
     let dy = 0;
     if (keys.has("KeyA") || keys.has("ArrowLeft")) dx -= 1;
@@ -718,6 +776,7 @@
         damageEnemy(enemy, damage, false);
       }
     }
+    if (!isCombatPhase()) return;
     vortices.push({
       x: player.x,
       y: player.y,
@@ -737,7 +796,7 @@
   }
 
   function activateActiveSkill(index) {
-    if (!player || mode !== "playing" || !player.alive) return;
+    if (!player || mode !== "playing" || !isCombatPhase() || !player.alive) return;
     const slot = player.activeSkills[index];
     const skill = slot ? activeSkillById[slot.id] : null;
     if (!skill) return;
@@ -873,6 +932,7 @@
       enemy.vy *= 0.12;
       damageEnemy(enemy, (115 + player.level * 2) * player.damageMult * (1 - clamp(d / radius, 0, 0.72)), false);
     }
+    if (!isCombatPhase()) return;
     clearEnemyProjectilesNear(player.x, player.y, radius, skill.color);
     vortices.push({
       x: player.x,
@@ -912,6 +972,7 @@
           damageEnemy(enemy, (145 + player.level * 4) * player.damageMult * (enemy === target ? 1 : 0.48), false);
         }
       }
+      if (!isCombatPhase()) return;
       burst(target.x, target.y, skill.color, 18, 4.4);
     }
     if (hits === 0) return false;
@@ -919,8 +980,11 @@
   }
 
   function updateWeapons(dt) {
+    if (!isCombatPhase()) return;
     updateCannon(dt);
+    if (!isCombatPhase()) return;
     updateMissiles(dt);
+    if (!isCombatPhase()) return;
     updateDrones(dt);
   }
 
@@ -964,23 +1028,29 @@
       });
     }
     if (player.ammoSpreadLevel > 0) fireMainSpreadAmmo(config, aim, perp);
+    if (!isCombatPhase()) return;
     if (player.ammoLaserLevel > 0) fireMainLaserAmmo(config, aim, perp);
+    if (!isCombatPhase()) return;
     if (player.ammoWaveLevel > 0 && player.ammoWaveTimer <= 0) {
       fireMainWaveAmmo(config, aim);
       player.ammoWaveTimer = Math.max(0.18, 0.62 / Math.sqrt(player.fireRate * player.cannonFireRate));
     }
+    if (!isCombatPhase()) return;
     if (player.ammoHomingLevel > 0 && player.ammoHomingTimer <= 0) {
       fireMainHomingAmmo(config);
       player.ammoHomingTimer = Math.max(0.08, 0.34 / Math.sqrt(player.fireRate * player.cannonFireRate));
     }
+    if (!isCombatPhase()) return;
     if (player.ammoPlasmaLevel > 0 && player.ammoPlasmaTimer <= 0) {
       fireMainPlasmaAmmo(config);
       player.ammoPlasmaTimer = Math.max(0.08, 0.24 / Math.sqrt(player.fireRate * player.cannonFireRate));
     }
+    if (!isCombatPhase()) return;
     if (player.ammoDrillLevel > 0 && player.ammoDrillTimer <= 0) {
       fireMainDrillAmmo(config, aim);
       player.ammoDrillTimer = Math.max(0.28, 1.05 / Math.sqrt(player.fireRate * player.cannonFireRate));
     }
+    if (!isCombatPhase()) return;
     puff(player.x + aim.x * 22, player.y + aim.y * 22, config.color, 3);
   }
 
@@ -1044,6 +1114,7 @@
           damageEnemy(enemy, damage * 0.34, false);
         }
       }
+      if (!isCombatPhase()) return;
       beamLines.push({
         x1: startX,
         y1: startY,
@@ -1138,6 +1209,7 @@
         width: 5 + Math.max(0, 4 - i),
       });
       damageEnemy(target, damage.amount, damage.crit && i === 0);
+      if (!isCombatPhase()) return;
       if (i === 0) target.slowTimer = Math.max(target.slowTimer, 0.45 + Math.min(1.2, endlessScale(level, 0.08, 30, 0.002)));
 
       origin = target;
@@ -1176,6 +1248,7 @@
         damageEnemy(enemy, damage * (enemy === state.boss ? 1.15 : 1), false);
       }
     }
+    if (!isCombatPhase()) return;
     beamLines.push({
       x1: startX,
       y1: startY,
@@ -1269,8 +1342,11 @@
   }
 
   function updateSpecialSystems(dt) {
+    if (!isCombatPhase()) return;
     updateOrbitalLaser(dt);
+    if (!isCombatPhase()) return;
     updatePlasmaAura(dt);
+    if (!isCombatPhase()) return;
     updateVortices(dt);
   }
 
@@ -1305,6 +1381,7 @@
         damageEnemy(enemy, damage.amount * (enemy === target ? 1 : 0.55), damage.crit && enemy === target);
       }
     }
+    if (!isCombatPhase()) return;
     burst(target.x, target.y, "#ffcf5a", 28, 5);
   }
 
@@ -1367,6 +1444,7 @@
         enemy.slowTimer = Math.max(enemy.slowTimer, 0.25);
         if (vortex.tick <= 0) {
           damageEnemy(enemy, (9 + Math.min(70, endlessScale(vortex.level, 8.5, 30, 0.2))) * player.damageMult, false);
+          if (!isCombatPhase()) return;
         }
       }
       if (vortex.tick <= 0) vortex.tick = 0.22;
@@ -1538,6 +1616,46 @@
     });
   }
 
+  function completeFinalBoss(enemy) {
+    const stage = currentStage();
+    state.stagePhase = "victory";
+    state.boss = null;
+    state.waveActive = false;
+    state.waveKills = 0;
+    state.waveTarget = 0;
+    state.waveSpawnRemaining = 0;
+    state.waveSpawnTimer = 0;
+    state.bountyPending = false;
+    state.bountyActive = false;
+    state.bountyTimer = 0;
+    state.bountyTargetId = null;
+    state.victoryTimer = C.victoryDelay;
+    state.screenShake = Math.max(state.screenShake, 0.9);
+    player.invuln = Math.max(player.invuln, C.victoryDelay + 0.8);
+    collectLoosePickups();
+    state.pendingUpgradePicks = 0;
+    for (const foe of enemies) {
+      if (foe !== enemy) foe.dead = true;
+    }
+    for (const projectile of projectiles) {
+      projectile.life = -1;
+    }
+    enemyProjectiles.length = 0;
+    hazards.length = 0;
+    vortices.length = 0;
+    explosionQueue.length = 0;
+    burst(enemy.x, enemy.y, stage.accent, 96, 6.4);
+    floatTexts.push({
+      x: player.x,
+      y: player.y - 48,
+      value: "最终目标摧毁",
+      color: stage.accent,
+      life: 1.2,
+      maxLife: 1.2,
+      size: 24,
+    });
+  }
+
   function advanceStage() {
     if (isFinalStage()) return;
     state.stageIndex += 1;
@@ -1583,6 +1701,11 @@
     state.hazardTimer -= dt;
     state.stormPulse = Math.max(0, state.stormPulse - dt);
 
+    if (isVictoryPhase()) {
+      updateHazards(dt);
+      return;
+    }
+
     if (state.stagePhase === "clear" || (state.stagePhase === "fight" && !state.waveActive)) {
       updateHazards(dt);
       return;
@@ -1590,7 +1713,7 @@
 
     if (state.cacheTimer <= 0) {
       spawnSupplyCache();
-      state.cacheTimer = 9999;
+      state.cacheTimer = stage.hazard === "cache" ? rand(15, 23) : 9999;
     }
 
     if (state.hazardTimer <= 0) {
@@ -1652,6 +1775,7 @@
     for (const enemy of enemies) {
       if (!enemy.dead && distSq(enemy.x, enemy.y, player.x, player.y) < 520 * 520) {
         damageEnemy(enemy, damage * player.damageMult, false);
+        if (!isCombatPhase()) return;
       }
     }
     if (player.invuln <= 0) damagePlayer(8 + state.stageIndex);
@@ -1661,7 +1785,7 @@
   function triggerRiftWave() {
     const count = 2 + Math.floor(state.stageIndex / 3);
     for (let i = 0; i < count; i += 1) {
-      spawnEnemy(i % 2 === 0 ? "chaser" : "strafe", { mini: true });
+      spawnEnemy(i % 2 === 0 ? "chaser" : "strafe", { mini: true, addToWaveTarget: true });
     }
     burst(player.x + rand(-220, 220), player.y + rand(-180, 180), currentStage().accent, 22, 2.8);
   }
@@ -1735,6 +1859,7 @@
         if (distSq(hazard.x, hazard.y, enemy.x, enemy.y) < (hazard.radius + enemy.radius) ** 2) {
           hazard.hit.add(enemy.id);
           damageEnemy(enemy, hazard.damage * 2.4, false);
+          if (!isCombatPhase()) return;
         }
       }
 
@@ -1751,7 +1876,7 @@
   }
 
   function updateSpawn(dt) {
-    if (state.stagePhase === "clear") return;
+    if (state.stagePhase !== "fight") return;
     if (state.boss) return;
 
     const stage = currentStage();
@@ -1824,7 +1949,7 @@
       { type: "splitter", weight: state.stageIndex >= 3 ? 0.55 : 0 },
     ];
     const type = weightedPick(options, (item) => item.weight).type;
-    const enemy = spawnEnemy(type, { bounty: true, elite: true });
+    const enemy = spawnEnemy(type, { bounty: true, elite: true, addToWaveTarget: true });
     state.bountyPending = false;
     state.bountyActive = true;
     state.bountyTargetId = enemy.id;
@@ -1903,6 +2028,7 @@
     };
 
     enemies.push(enemy);
+    if (!bossEntity && options.addToWaveTarget) addWaveExtraEnemy();
     if (bossEntity) state.boss = enemy;
     return enemy;
   }
@@ -2834,6 +2960,7 @@
           x: enemy.x + rand(-18, 18),
           y: enemy.y + rand(-18, 18),
           mini: true,
+          addToWaveTarget: true,
         });
       }
     }
@@ -2847,6 +2974,8 @@
         (18 + arcScale * 10) * player.damageMult * player.arcDamageMult,
       );
     }
+
+    if (!isCombatPhase()) return;
 
     if (player.blackHoleLevel > 0 && !bossLike) {
       const chance = Math.min(0.72, 0.1 + endlessScale(player.blackHoleLevel, 0.075, 28, 0.003));
@@ -2864,8 +2993,7 @@
     if (enemy.bossKind === "stage") {
       completeStage(enemy);
     } else if (enemy.bossKind === "final" || enemy.behavior === "boss") {
-      state.boss = null;
-      state.victoryTimer = C.victoryDelay;
+      completeFinalBoss(enemy);
     }
   }
 
@@ -2878,7 +3006,9 @@
     const count = Math.min(MAX_EXPLOSIONS_PER_FRAME, explosionQueue.length);
     for (let i = 0; i < count; i += 1) {
       const explosion = explosionQueue.shift();
+      if (!explosion) return;
       explode(explosion.x, explosion.y, explosion.radius, explosion.damage, explosion.color);
+      if (!isCombatPhase()) return;
     }
   }
 
@@ -3016,7 +3146,7 @@
       state.pendingUpgradePicks += state.skillChoicesPerLevel;
       leveled = true;
     }
-    if (leveled && mode === "playing") openUpgrade();
+    if (leveled && mode === "playing" && !isVictoryPhase()) openUpgrade();
   }
 
   function openUpgrade() {
